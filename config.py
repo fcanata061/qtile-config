@@ -1,18 +1,50 @@
-from libqtile import bar, widget
+from libqtile import bar, widget, qtile
 from libqtile.config import Screen
-from libqtile import qtile
-import psutil
 import subprocess
+import time
 
-# ===============================
-# Função para mostrar taxa de rede
-# ===============================
+# ==========================
+# Tema (multi-tema)
+# ==========================
+THEME = "dracula"  # nord | dracula | gruvbox | solarized-dark | solarized-light
+
+# Paletas por tema
+palettes = {
+    "nord": {
+        "base": "#2e3440", "fg": "#d8dee9",
+        "cpu": "#81a1c1", "mem": "#5e81ac", "temp": "#88c0d0",
+        "net": "#b48ead", "date": "#a3be8c",
+    },
+    "dracula": {
+        "base": "#282a36", "fg": "#f8f8f2",
+        "cpu": "#bd93f9", "mem": "#ff5555", "temp": "#f1fa8c",
+        "net": "#6272a4", "date": "#50fa7b",
+    },
+    "gruvbox": {
+        "base": "#282828", "fg": "#ebdbb2",
+        "cpu": "#d79921", "mem": "#98971a", "temp": "#d65d0e",
+        "net": "#458588", "date": "#b16286",
+    },
+    "solarized-dark": {
+        "base": "#002b36", "fg": "#93a1a1",
+        "cpu": "#268bd2", "mem": "#2aa198", "temp": "#b58900",
+        "net": "#6c71c4", "date": "#859900",
+    },
+    "solarized-light": {
+        "base": "#eee8d5", "fg": "#073642",
+        "cpu": "#2aa198", "mem": "#859900", "temp": "#b58900",
+        "net": "#268bd2", "date": "#d33682",
+    }
+}
+
+colors = palettes.get(THEME, palettes["dracula"])
+separator = ""
+
+# ==========================
+# Widget personalizado NetSpeed
+# ==========================
 class NetSpeed(widget.ThreadedPollText):
-    """Widget personalizado para upload/download da interface padrão"""
-    defaults = [
-        ("update_interval", 1, "Update interval"),
-    ]
-
+    defaults = [("update_interval", 1, "Update interval")]
     def __init__(self, **config):
         super().__init__(**config)
         self.last_rx = 0
@@ -20,9 +52,10 @@ class NetSpeed(widget.ThreadedPollText):
         self.last_time = None
 
     def poll(self):
-        # interface padrão
         try:
-            dev = subprocess.check_output("ip route | awk '/^default/ {print $5; exit}'", shell=True).decode().strip()
+            dev = subprocess.check_output(
+                "ip route | awk '/^default/ {print $5; exit}'",
+                shell=True).decode().strip()
         except subprocess.CalledProcessError:
             return " Offline"
 
@@ -31,7 +64,6 @@ class NetSpeed(widget.ThreadedPollText):
 
         rx = int(open(f"/sys/class/net/{dev}/statistics/rx_bytes").read())
         tx = int(open(f"/sys/class/net/{dev}/statistics/tx_bytes").read())
-        import time
         now = time.time()
 
         if self.last_time is None:
@@ -50,83 +82,82 @@ class NetSpeed(widget.ThreadedPollText):
         self.last_tx = tx
         self.last_time = now
 
-        def format_rate(val):
-            if val > 1048576:
-                return f"{val/1048576:.1f}MB/s"
-            elif val > 1024:
-                return f"{val/1024:.1f}KB/s"
+        def fmt(v):
+            if v > 1048576:
+                return f"{v/1048576:.1f}MB/s"
+            elif v > 1024:
+                return f"{v/1024:.1f}KB/s"
             else:
-                return f"{val:.0f}B/s"
+                return f"{v:.0f}B/s"
 
-        return f" {dev} {format_rate(rx_rate)}↓ {format_rate(tx_rate)}↑"
+        return f" {dev} {fmt(rx_rate)}↓ {fmt(tx_rate)}↑"
 
-# ===============================
-# Paleta de cores Powerline
-# ===============================
-colors = {
-    "base": "#282c34",
-    "fg": "#ffffff",
-    "cpu": "#bd93f9",
-    "mem": "#ff5555",
-    "temp": "#f1fa8c",
-    "net": "#6272a4",
-    "date": "#50fa7b",
-}
+# ==========================
+# Função para criar bloco Powerline clicável
+# ==========================
+def powerline_block(text, bg, next_bg, click_cmd=None, padding=8):
+    """Cria bloco com separador colorido, opcionalmente clicável"""
+    widgets = []
 
-separator = ""  # Powerline separator
-
-# ===============================
-# Widgets com Powerline
-# ===============================
-def powerline_widget(text, bg_color, next_bg=None):
-    """Cria um bloco Powerline simples"""
-    if next_bg:
-        sep = f'{separator}'
+    if click_cmd:
+        widgets.append(
+            widget.TextBox(
+                text=f" {text} ",
+                background=bg,
+                foreground=colors["fg"],
+                padding=padding,
+                fontsize=14,
+                mouse_callbacks={"Button1": lambda: subprocess.Popen(click_cmd, shell=True)}
+            )
+        )
     else:
-        sep = ''
-    return f' {text} {sep}'
+        widgets.append(
+            widget.TextBox(
+                text=f" {text} ",
+                background=bg,
+                foreground=colors["fg"],
+                padding=padding,
+                fontsize=14
+            )
+        )
 
-# ===============================
-# Configuração da barra Qtile
-# ===============================
+    widgets.append(
+        widget.TextBox(
+            text=separator,
+            foreground=bg,
+            background=next_bg,
+            padding=0,
+            fontsize=18
+        )
+    )
+    return widgets
+
+# ==========================
+# Configuração da barra
+# ==========================
 screens = [
     Screen(
         top=bar.Bar(
-            [
-                widget.Spacer(length=5),
-                widget.CPU(
-                    format=" {load_percent}%",
-                    background=colors["cpu"],
-                    foreground=colors["fg"],
-                ),
-                widget.TextBox(text=separator, foreground=colors["cpu"], background=colors["mem"], fontsize=16),
-                widget.Memory(
-                    format=" {MemUsed:.0f}/{MemTotal:.0f}MB",
-                    background=colors["mem"],
-                    foreground=colors["fg"],
-                ),
-                widget.TextBox(text=separator, foreground=colors["mem"], background=colors["temp"], fontsize=16),
-                widget.ThermalSensor(
-                    tag_sensor="Package id 0",
-                    fmt=" {}°C",
-                    background=colors["temp"],
-                    foreground=colors["fg"],
-                ),
-                widget.TextBox(text=separator, foreground=colors["temp"], background=colors["net"], fontsize=16),
-                NetSpeed(
-                    background=colors["net"],
-                    foreground=colors["fg"],
-                ),
-                widget.TextBox(text=separator, foreground=colors["net"], background=colors["date"], fontsize=16),
-                widget.Clock(
-                    format=" %d/%m/%Y  %H:%M",
-                    background=colors["date"],
-                    foreground=colors["fg"],
-                ),
-                widget.Spacer(length=5),
-            ],
-            24,  # altura da barra
-            background=colors["base"],
+            widgets=sum([
+                # CPU (clicável -> htop)
+                powerline_block(" CPU", colors["cpu"], colors["mem"], click_cmd="xterm -e htop"),
+                [widget.CPU(format="{load_percent}%", background=colors["cpu"], foreground=colors["fg"], padding=6)],
+                # Memória (clicável -> htop)
+                powerline_block(" MEM", colors["mem"], colors["temp"], click_cmd="xterm -e htop"),
+                [widget.Memory(format="{MemUsed:.0f}/{MemTotal:.0f}MB", background=colors["mem"], foreground=colors["fg"], padding=6)],
+                # Temperatura (clicável -> sensors)
+                powerline_block(" TEMP", colors["temp"], colors["net"], click_cmd="xterm -e sensors"),
+                [widget.ThermalSensor(tag_sensor="Package id 0", fmt="{:.0f}°C", background=colors["temp"], foreground=colors["fg"], padding=6)],
+                # Rede (clicável -> nmtui)
+                powerline_block("", colors["net"], colors["date"], click_cmd="xterm -e nmtui"),
+                [NetSpeed(background=colors["net"], foreground=colors["fg"], padding=6)],
+                # Data/Hora (não clicável)
+                powerline_block("", colors["date"], colors["base"]),
+                [widget.Clock(format=" %d/%m/%Y  %H:%M", background=colors["date"], foreground=colors["fg"], padding=6)],
+            ], [])
+            ,
+            26,  # altura da barra
+            background=colors["base"]
         )
     )
-]
+        ]
