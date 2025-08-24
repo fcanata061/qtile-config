@@ -1,0 +1,191 @@
+===========================================================================
+TUTORIAL DE CONFIGURAÇÃO: BARRA POWERLINE INTERATIVA MULTI-TEMA PARA QTile
+COM ENCAIXE NO CONFIG.PY ORIGINAL
+===========================================================================
+
+1. INTRODUÇÃO
+-------------
+Este tutorial ensina a adicionar uma barra Powerline interativa ao Qtile, mostrando:
+- CPU (clicável → htop)
+- Memória (clicável → htop)
+- Temperatura (clicável → sensors)
+- Internet (upload/download, clicável → nmtui)
+- Data/Hora
+- Separadores Powerline coloridos
+- Multi-tema: Nord, Dracula, Gruvbox, Solarized Dark, Solarized Light
+
+---------------------------------------------------------------------------
+
+2. DEPENDÊNCIAS
+---------------
+a) Python 3 + Qtile + psutil
+Debian/Ubuntu:
+$ sudo apt install python3-pip x11-xserver-utils
+$ pip3 install qtile psutil
+
+b) Monitoramento de sensores
+$ sudo apt install lm-sensors
+$ sudo sensors-detect
+$ sensors
+
+c) Fontes recomendadas
+- Nerd Fonts (Hack, FiraCode, JetBrainsMono)
+- Powerline fonts
+Exemplo Hack Nerd Font:
+$ wget https://github.com/ryanoasis/nerd-fonts/releases/download/v2.3.3/Hack.zip
+$ unzip Hack.zip -d ~/.fonts
+$ fc-cache -fv
+
+---------------------------------------------------------------------------
+
+3. BACKUP DO CONFIG.PY
+----------------------
+Antes de qualquer modificação:
+$ cp ~/.config/qtile/config.py ~/.config/qtile/config.py.backup
+
+---------------------------------------------------------------------------
+
+4. ENCAIXE DO CÓDIGO DA BARRA
+------------------------------
+
+a) Importações necessárias
+No início do seu config.py (geralmente após `from libqtile import layout, hook, qtile`), adicione:
+
+from libqtile import bar, widget, qtile
+from libqtile.config import Screen
+import subprocess
+import time
+
+b) Defina a variável de tema e cores:
+Insira **antes da seção de telas/screens**:
+
+THEME = "dracula"  # nord | dracula | gruvbox | solarized-dark | solarized-light
+
+palettes = {
+    "nord": {...},
+    "dracula": {...},
+    "gruvbox": {...},
+    "solarized-dark": {...},
+    "solarized-light": {...}
+}
+
+colors = palettes.get(THEME, palettes["dracula"])
+separator = ""
+
+(Substitua `{...}` pelas cores conforme a versão final fornecida)
+
+c) Adicione o widget NetSpeed personalizado:
+
+class NetSpeed(widget.ThreadedPollText):
+    defaults = [("update_interval", 1, "Update interval")]
+    def __init__(self, **config):
+        super().__init__(**config)
+        self.last_rx = 0
+        self.last_tx = 0
+        self.last_time = None
+    def poll(self):
+        ...  # função completa do NetSpeed (upload/download)
+
+d) Função auxiliar para blocos Powerline clicáveis:
+
+def powerline_block(text, bg, next_bg, click_cmd=None, padding=8):
+    widgets = []
+    if click_cmd:
+        widgets.append(widget.TextBox(
+            text=f" {text} ",
+            background=bg,
+            foreground=colors["fg"],
+            padding=padding,
+            fontsize=14,
+            mouse_callbacks={"Button1": lambda: subprocess.Popen(click_cmd, shell=True)}
+        ))
+    else:
+        widgets.append(widget.TextBox(
+            text=f" {text} ",
+            background=bg,
+            foreground=colors["fg"],
+            padding=padding,
+            fontsize=14
+        ))
+    widgets.append(widget.TextBox(
+        text=separator,
+        foreground=bg,
+        background=next_bg,
+        padding=0,
+        fontsize=18
+    ))
+    return widgets
+
+---------------------------------------------------------------------------
+
+5. CONFIGURAÇÃO DAS TELAS (SCREENS)
+-----------------------------------
+Substitua ou acrescente à sua configuração de `screens` existente:
+
+screens = [
+    Screen(
+        top=bar.Bar(
+            widgets=sum([
+                # CPU
+                powerline_block(" CPU", colors["cpu"], colors["mem"], click_cmd="xterm -e htop"),
+                [widget.CPU(format="{load_percent}%", background=colors["cpu"], foreground=colors["fg"], padding=6)],
+                # Memória
+                powerline_block(" MEM", colors["mem"], colors["temp"], click_cmd="xterm -e htop"),
+                [widget.Memory(format="{MemUsed:.0f}/{MemTotal:.0f}MB", background=colors["mem"], foreground=colors["fg"], padding=6)],
+                # Temperatura
+                powerline_block(" TEMP", colors["temp"], colors["net"], click_cmd="xterm -e sensors"),
+                [widget.ThermalSensor(tag_sensor="Package id 0", fmt="{:.0f}°C", background=colors["temp"], foreground=colors["fg"], padding=6)],
+                # Rede
+                powerline_block("", colors["net"], colors["date"], click_cmd="xterm -e nmtui"),
+                [NetSpeed(background=colors["net"], foreground=colors["fg"], padding=6)],
+                # Data/Hora
+                powerline_block("", colors["date"], colors["base"]),
+                [widget.Clock(format=" %d/%m/%Y  %H:%M", background=colors["date"], foreground=colors["fg"], padding=6)],
+            ], []),
+            26,  # altura da barra
+            background=colors["base"]
+        )
+    )
+]
+
+---------------------------------------------------------------------------
+
+6. TESTANDO A BARRA
+-------------------
+1) Salve o config.py
+2) Reinicie o Qtile:
+$ qtile cmd-obj -o cmd -f restart
+3) Verifique:
+   - Barra aparece no topo
+   - Separadores coloridos
+   - CPU/Memória clicável abre htop
+   - Temperatura clicável abre sensors
+   - Rede clicável abre nmtui
+   - Upload/download funcionando em tempo real
+   - Data/Hora exibida corretamente
+
+---------------------------------------------------------------------------
+
+7. TROCA DE TEMAS
+-----------------
+Alterando a variável THEME no início do arquivo:
+
+THEME = "nord"
+THEME = "dracula"
+THEME = "gruvbox"
+THEME = "solarized-dark"
+THEME = "solarized-light"
+
+Reinicie Qtile para aplicar o tema.
+
+---------------------------------------------------------------------------
+
+8. DICAS
+--------
+- Ajuste padding e fontsize conforme sua resolução
+- Certifique-se que as Nerd Fonts estão instaladas
+- Pode adicionar novos blocos usando a função powerline_block
+
+===========================================================================
+FIM DO TUTORIAL
+===========================================================================
